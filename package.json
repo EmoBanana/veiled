@@ -1,0 +1,16 @@
+{
+    "name": "veiled-agent",
+    "version": "1.0.0",
+    "description": "Liquidity Manager Agent for Veiled Protocol",
+    "main": "agent.ts",
+    "scripts": {
+        "start": "ts-node agent.ts"
+    },
+    "dependencies": {
+        "ethers": "^6.13.5"
+    },
+    "devDependencies": {
+        "ts-node": "^10.9.2",
+        "typescript": "^5.7.3"
+    }
+}
