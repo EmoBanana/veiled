@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Terminal, Lock, Activity, UploadCloud, ShieldCheck } from "lucide-react";
 import { uploadToWalrus } from "./walrusService";
+import Strategy from "../components/strategy";
 
 export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -140,25 +141,14 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right Panel: Dynamic Stream (Placeholder) */}
+        {/* Right Panel: Dynamic Stream */}
         <section className="cyber-border-purple bg-[#050505] p-6 flex flex-col relative overflow-hidden">
-          <div className="flex items-center gap-2 mb-2 border-b border-gray-800 pb-2">
-            <Activity size={18} className="text-[#bd00ff]" />
-            <h2 className="text-lg font-bold text-[#bd00ff]">DYNAMIC STREAM</h2>
-          </div>
 
-          <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50">
-            <div className="w-16 h-16 border-2 border-dashed border-[#bd00ff] rounded-full flex items-center justify-center mb-4 animate-[spin_10s_linear_infinite]">
-              <div className="w-10 h-10 bg-[#bd00ff]/20 rounded-full"></div>
-            </div>
-            <h3 className="text-[#bd00ff] font-bold">YELLOW NETWORK SLIDER</h3>
-            <p className="text-xs text-gray-500 mt-2 max-w-[200px]">
-              Coming Soon: High-speed cross-chain liquidity stream visualization.
-            </p>
-          </div>
+          {/* Strategy Engine Component */}
+          <Strategy onLog={addLog} />
 
           {/* Mock Graph aesthetics */}
-          <div className="absolute bottom-0 left-0 right-0 h-32 opacity-20 pointer-events-none">
+          <div className="absolute bottom-0 left-0 right-0 h-32 opacity-20 pointer-events-none -z-10">
             {/* Just some CSS lines */}
             <div className="w-full h-full" style={{
               background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, #bd00ff 10px, #bd00ff 11px)'

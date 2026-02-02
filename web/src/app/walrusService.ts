@@ -1,9 +1,6 @@
-// Basic Walrus Service Aggregator (Mock/Testnet)
-// Note: Using a public aggregator or localhost proxy.
-// For the purpose of this task, we will mock the encryption and use a public aggregator if available, 
-// or simulate the PUT request return.
-
-const AGGREGATOR_URL = "https://aggregator.walrus-testnet.walrus.space"; // Example URL
+// Walrus Service (Real Testnet Publisher)
+// Docs: https://docs.walrus.site/usage/client-api.html
+const PUBLISHER_URL = "https://publisher.walrus-testnet.walrus.space";
 
 export interface WalrusResponse {
     newlyCreated?: {
@@ -19,18 +16,17 @@ export interface WalrusResponse {
 
 export async function uploadToWalrus(data: string, onLog?: (msg: string) => void): Promise<string> {
 
-    // 1. Mock Encryption
-    onLog?.("Encrypting data (Mock AES-256)...");
-    await new Promise(r => setTimeout(r, 800)); // Simulate work
-    const encryptedData = btoa(data); // Simple mock encryption (Base64)
-    onLog?.("Encryption complete. Order is obfuscated.");
+    // 1. Encoding
+    // Using Base64 to represent the binary payload for the PUT body.
+    onLog?.("Encoding data...");
+    const encryptedData = btoa(data);
 
     // 2. Upload to Walrus
-    onLog?.(`Uploading to Walrus Aggregator...`);
+    onLog?.(`Uploading to Walrus Publisher (${PUBLISHER_URL})...`);
 
     try {
-        // Actual fetch to the testnet aggregator
-        const response = await fetch(`${AGGREGATOR_URL}/v1/store`, {
+        // We use ?epochs=1 to specify storage duration (default testnet param)
+        const response = await fetch(`${PUBLISHER_URL}/v1/store?epochs=1`, {
             method: "PUT",
             body: encryptedData,
             headers: {
@@ -39,7 +35,8 @@ export async function uploadToWalrus(data: string, onLog?: (msg: string) => void
         });
 
         if (!response.ok) {
-            throw new Error(`Upload failed: ${response.statusText}`);
+            const errorText = await response.text();
+            throw new Error(`Walrus Publisher Error (${response.status}): ${errorText}`);
         }
 
         const result: WalrusResponse = await response.json();
@@ -50,14 +47,14 @@ export async function uploadToWalrus(data: string, onLog?: (msg: string) => void
         } else if (result.alreadyCertified) {
             blobId = result.alreadyCertified.blobId;
         } else {
-            throw new Error("Unexpected response format from Walrus");
+            throw new Error("Invalid response from Walrus Publisher");
         }
 
-        onLog?.(`Blob ID Received: ${blobId}`);
+        onLog?.(`✅ Blob ID Received: ${blobId}`);
         return blobId;
 
     } catch (error) {
-        onLog?.(`Error uploading to Walrus: ${(error as Error).message}`);
+        onLog?.(`❌ Upload Failed: ${(error as Error).message}`);
         throw error;
     }
 }
