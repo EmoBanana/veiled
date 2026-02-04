@@ -10,6 +10,7 @@
         "@types/ws": "^8.18.1",
         "dotenv": "^17.2.3",
         "ethers": "^6.13.5",
+        "solmate": "github:transmissions11/solmate",
         "ws": "^8.19.0"
     },
     "devDependencies": {
