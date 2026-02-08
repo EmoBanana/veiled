@@ -3,8 +3,11 @@ import '@rainbow-me/rainbowkit/styles.css';
 import { Providers } from "@/context/Providers";
 
 export const metadata = {
-  title: "Veiled Protocol | Terminal",
+  title: "Veiled",
   description: "Privacy-first Limit Orders",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌫️</text></svg>",
+  },
 };
 
 export default function RootLayout({

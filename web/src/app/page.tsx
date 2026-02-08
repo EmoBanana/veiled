@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Terminal, Lock, Activity, UploadCloud, ShieldCheck, Wallet, Zap } from "lucide-react";
 import DynamicOrder from "../components/slider";
-import { useAccount } from "wagmi";
+import { useAccount, useSignTypedData } from "wagmi";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { encryptOrder, type OrderPayload } from "../utils/sui-order";
 
@@ -15,8 +15,9 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Wagmi for ETH address (settlement destination)
+  // Wagmi for ETH address and signing
   const { address, isConnected } = useAccount();
+  const { signTypedDataAsync } = useSignTypedData();
 
   // WebSocket for price feed and order submission
   const ws = useRef<WebSocket | null>(null);
@@ -79,21 +80,52 @@ export default function Home() {
 
     setIsProcessing(true);
     addLog("Initiating Secure Limit Order...");
-    console.log("[Order] Place Order: Encrypt → Send to Agent → Agent uploads to Walrus & creates Sui order.");
+    console.log("[Order] Place Order: Sign → Encrypt → Send to Agent → Agent uploads to Walrus & creates Sui order.");
 
     try {
-      // 1. Encrypt order locally
+      const targetPrice = Number(price);
+      const amountVal = Number(amount);
+
+      // 1. Sign Order (EIP-712)
+      addLog("Requesting Signature...");
+      const signature = await signTypedDataAsync({
+        domain: {
+          name: 'Veiled Protocol',
+          version: '1',
+          chainId: 11155111, // Sepolia
+          verifyingContract: '0x0000000000000000000000000000000000000000',
+        },
+        types: {
+          Order: [
+            { name: 'targetPrice', type: 'uint256' },
+            { name: 'amount', type: 'uint256' },
+            { name: 'direction', type: 'string' },
+            { name: 'userEthAddress', type: 'address' },
+          ],
+        },
+        primaryType: 'Order',
+        message: {
+          targetPrice: BigInt(Math.floor(targetPrice)),
+          amount: BigInt(Math.floor(amountVal * 1_000_000)), // Convert to micro-USDC (6 decimals)
+          direction: 'buy',
+          userEthAddress: address,
+        },
+      });
+      addLog("✅ Order Signed.");
+
+      // 2. Encrypt order locally
       const orderPayload: OrderPayload = {
-        targetPrice: Number(price),
-        amount: Number(amount),
+        targetPrice,
+        amount: amountVal,
         direction: "buy",
         userEthAddress: address,
+        signature,
       };
       addLog("Encrypting order...");
       const encryptedData = await encryptOrder(orderPayload);
       addLog(`Order encrypted (${encryptedData.length} bytes).`);
 
-      // 2. Send encrypted order to agent via WebSocket
+      // 3. Send encrypted order to agent via WebSocket
       // Agent will: upload to Walrus → create order on Sui with agent's key
       addLog("Sending to Agent for Walrus upload & Sui order creation...");
       const message = JSON.stringify({

@@ -184,6 +184,46 @@ interface SuiOrderPayload {
     amount: number;
     direction: 'buy' | 'sell';
     userEthAddress: string;
+    signature?: string;
+}
+
+// EIP-712 Domain and Types (Must match frontend)
+const VEILED_DOMAIN = {
+    name: 'Veiled Protocol',
+    version: '1',
+    chainId: 11155111,
+    verifyingContract: '0x0000000000000000000000000000000000000000',
+};
+
+const ORDER_TYPES = {
+    Order: [
+        { name: 'targetPrice', type: 'uint256' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'direction', type: 'string' },
+        { name: 'userEthAddress', type: 'address' },
+    ],
+};
+
+function verifySignature(payload: SuiOrderPayload): boolean {
+    if (!payload.signature) return false;
+
+    try {
+        const signer = ethers.verifyTypedData(
+            VEILED_DOMAIN,
+            ORDER_TYPES,
+            {
+                targetPrice: payload.targetPrice,
+                amount: BigInt(Math.floor(payload.amount * 1_000_000)), // Convert to atomic units (USDC 6 decimals)
+                direction: payload.direction,
+                userEthAddress: payload.userEthAddress,
+            },
+            payload.signature
+        );
+        return signer.toLowerCase() === payload.userEthAddress.toLowerCase();
+    } catch (e) {
+        console.error("Signature verification failed:", e);
+        return false;
+    }
 }
 
 interface SuiOrder {
@@ -474,6 +514,22 @@ async function startMarketLoop() {
 
                 if (shouldTrigger) {
                     console.log(`[Sui] 🚨 Order ${orderId.slice(0, 10)}... TRIGGERED at $${marketPrice.toFixed(2)}`);
+
+                    // Verify Signature
+                    if (order.payload.signature) {
+                        const isValid = verifySignature(order.payload);
+                        if (!isValid) {
+                            console.error(`[Sui] ❌ Signature verification failed for order ${orderId}`);
+                            // Mark as processed/failed to avoid retry loop
+                            order.processed = true;
+                            suiOrders.set(orderId, order);
+                            saveState();
+                            continue;
+                        }
+                        console.log(`[Sui] ✍️ Signature verified for ${order.payload.userEthAddress.slice(0, 8)}...`);
+                    } else {
+                        console.warn(`[Sui] ⚠️ No signature found for order ${orderId}. Executing anyway (Legacy/Dev).`);
+                    }
 
                     // Execute on Ethereum
                     const mockStrategy: StrategyPayload = {

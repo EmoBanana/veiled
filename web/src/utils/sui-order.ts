@@ -17,8 +17,8 @@ const WALRUS_PUBLISHER = 'https://publisher.walrus-testnet.walrus.space';
 
 // Seal Testnet key servers (Open mode - Mysten Labs)
 const SEAL_TESTNET_KEY_SERVERS = [
-  '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75',
-  '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8',
+    '0x73d05d62c18d9374e3ea529e8e0ed6161da1a141a94d3f76ae3fe4e99356db75',
+    '0xf5d14a81a982144ae441cd7d64b09027f116a468bd36e7eca494f750591623c8',
 ];
 const SEAL_THRESHOLD = 2;
 
@@ -28,7 +28,25 @@ export interface OrderPayload {
     amount: number;        // Amount in USDC
     direction: 'buy' | 'sell';
     userEthAddress: string; // Ethereum address for settlement
+    signature?: string;    // EIP-712 Signature
 }
+
+// EIP-712 Domain and Types
+export const VEILED_DOMAIN = {
+    name: 'Veiled Protocol',
+    version: '1',
+    chainId: 11155111, // Sepolia
+    verifyingContract: '0x0000000000000000000000000000000000000000', // No on-chain verification contract yet
+} as const;
+
+export const ORDER_TYPES = {
+    Order: [
+        { name: 'targetPrice', type: 'uint256' },
+        { name: 'amount', type: 'uint256' },
+        { name: 'direction', type: 'string' },
+        { name: 'userEthAddress', type: 'address' },
+    ],
+} as const;
 
 /**
  * Upload encrypted data to Walrus

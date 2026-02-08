@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Zap, Radio, TrendingDown, TrendingUp, Loader2 } from "lucide-react";
-import { useAccount, useWalletClient } from "wagmi";
+import { useAccount, useWalletClient, useSignTypedData } from "wagmi";
 import { createAppSessionMessage, parseAnyRPCResponse, type RPCData, RPCProtocolVersion, type RPCAppDefinition, type RPCAppSessionAllocation } from "@erc7824/nitrolite";
 
 // Yellow Network ClearNode endpoints
@@ -33,6 +33,7 @@ export default function Slider({ onLog }: SliderProps) {
     // Wallet connection
     const { address, isConnected } = useAccount();
     const { data: walletClient } = useWalletClient();
+    const { signTypedDataAsync } = useSignTypedData();
 
     // State
     const [trailingOffset, setTrailingOffset] = useState(100); // $ below market
@@ -385,6 +386,33 @@ export default function Slider({ onLog }: SliderProps) {
             };
 
             if (DEV_MODE) {
+                // Sign the order (EIP-712)
+                onLog("[Yellow] Requesting Signature...");
+                const signature = await signTypedDataAsync({
+                    domain: {
+                        name: 'Veiled Protocol',
+                        version: '1',
+                        chainId: 11155111,
+                        verifyingContract: '0x0000000000000000000000000000000000000000',
+                    },
+                    types: {
+                        DynamicOrder: [
+                            { name: 'direction', type: 'string' },
+                            { name: 'trailingOffset', type: 'uint256' },
+                            { name: 'amount', type: 'uint256' },
+                            { name: 'userAddress', type: 'address' },
+                        ],
+                    },
+                    primaryType: 'DynamicOrder',
+                    message: {
+                        direction: order.direction,
+                        trailingOffset: BigInt(order.trailingOffset),
+                        amount: BigInt(Math.floor(orderAmount * 1_000_000)),
+                        userAddress: address,
+                    },
+                });
+                onLog("[Yellow] ✅ Order Signed.");
+
                 // Dev mode: send to local agent
                 const orderMessage = {
                     type: "CREATE_DYNAMIC_ORDER",
@@ -395,6 +423,7 @@ export default function Slider({ onLog }: SliderProps) {
                         amount: order.amount,
                         currentTarget: order.currentTarget,
                         userAddress: address,
+                        signature,
                     },
                 };
                 yellowWs.current?.send(JSON.stringify(orderMessage));
