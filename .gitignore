@@ -10,6 +10,13 @@ docs/
 
 # Dotenv file
 .env
+.env.local
+.env.*.local
+
+# Agent state
+.processed_orders.json
+.sui_event_cursor.json
+.agent_state.json
 
 # Node
 node_modules/

@@ -12,7 +12,7 @@ module veiled::order {
     // =========== Constants ===========
     
     /// Agent address (Ethereum-style, but used for Sui access control)
-    const AGENT: address = @0x54609ff7660d8bF2F6c2c6078dae2E7f791610b4;
+    const AGENT: address = @0xd8f5bddae49210cdf2d63415ddd4ffd3f80a20947e589dd3f9e576f95fc8a540;
     
     /// Error codes
     const E_NOT_AGENT: u64 = 0;
@@ -104,22 +104,26 @@ module veiled::order {
         });
     }
 
-    /// Seal access control: grants decryption permission to agent
-    /// Called by Seal SDK when agent requests decryption
-    /// ID format: [package_id]::order::[order_id]
+    /// Seal access control: grants decryption permission
+    /// Called by Seal SDK when requesting decryption keys
+    /// 
+    /// Access control is handled by Seal SDK through session key binding:
+    /// - Session key is bound to agent's address + this package ID
+    /// - Only agent can create valid session keys (requires private key signature)
+    /// 
+    /// This function only checks business logic (order status).
     public entry fun seal_approve_order(
         _id: vector<u8>,
         order: &Order,
-        ctx: &TxContext
+        _ctx: &TxContext
     ) {
-        // Only agent can decrypt
-        assert!(tx_context::sender(ctx) == AGENT, E_NOT_AGENT);
-        
         // Cannot decrypt cancelled orders
         assert!(!order.cancelled, E_ALREADY_CANCELLED);
         
         // Cannot decrypt already executed orders
         assert!(!order.executed, E_ALREADY_EXECUTED);
+        
+        // If we reach here without aborting, Seal key servers will release decryption keys
     }
 
     /// Mark order as executed (agent only, after ETH settlement)

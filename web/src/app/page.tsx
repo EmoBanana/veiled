@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Terminal, Lock, Activity, UploadCloud, ShieldCheck, Wallet } from "lucide-react";
-import Strategy from "../components/strategy";
-import { useAccount, useSignMessage } from "wagmi";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Terminal, Lock, Activity, UploadCloud, ShieldCheck, Wallet, Zap } from "lucide-react";
+import DynamicOrder from "../components/slider";
+import { useAccount } from "wagmi";
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { encryptOrderAndUploadToWalrus, type OrderPayload } from "../utils/sui-order";
+import { encryptOrder, type OrderPayload } from "../utils/sui-order";
 
 export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -14,23 +14,47 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Wagmi Hooks
+  // Wagmi for ETH address (settlement destination)
   const { address, isConnected } = useAccount();
-  const { signMessageAsync } = useSignMessage();
 
-  // WebSocket for Orders
+  // WebSocket for price feed and order submission
   const ws = useRef<WebSocket | null>(null);
-
   useEffect(() => {
     const socket = new WebSocket("ws://localhost:8080");
     ws.current = socket;
     socket.onopen = () => addLog("System Connected to Agent Net.");
+
+    // Handle responses from agent
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "ORDER_CREATED") {
+          addLog(`✅ Order created on Sui (tx: ${data.digest || data.txDigest || 'pending'})`);
+          addLog(`📦 Walrus Blob: ${data.blobId}`);
+          addLog(`🔗 https://aggregator.walrus-testnet.walrus.space/v1/blobs/${data.blobId}`);
+        } else if (data.type === "ORDER_PENDING") {
+          // Order decrypted by agent, waiting for price trigger
+          addLog(`🔓 Order decrypted by Agent`);
+          addLog(`⏳ Waiting for ${data.direction?.toUpperCase()} trigger: $${data.targetPrice} (${data.amount} USDC)`);
+        } else if (data.type === "ORDER_ERROR") {
+          addLog(`❌ Order failed: ${data.error}`);
+        } else if (data.type === "ORDER_EXECUTED") {
+          // Order was executed on Ethereum!
+          addLog(`🎉 ORDER EXECUTED SUCCESSFULLY!`);
+          addLog(`💰 ${data.direction?.toUpperCase()} ${data.amount} USDC @ $${data.executedAt?.toFixed(2)}`);
+          addLog(`🔗 https://sepolia.etherscan.io/tx/${data.txHash}`);
+        }
+      } catch {
+        // Ignore non-JSON messages (price updates)
+      }
+    };
+
     return () => { socket.close(); };
   }, []);
 
-  const addLog = (msg: string) => {
+  const addLog = useCallback((msg: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-  };
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -45,48 +69,38 @@ export default function Home() {
       return;
     }
 
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      addLog("ERROR: Not connected to Agent. Refresh the page.");
+      return;
+    }
+
     setIsProcessing(true);
     addLog("Initiating Secure Limit Order...");
-    console.log("[Order] Place Order: Seal encrypt + Walrus upload + broadcast to agent.");
+    console.log("[Order] Place Order: Encrypt → Send to Agent → Agent uploads to Walrus & creates Sui order.");
 
     try {
-      // 1. Encrypt order with Seal and upload to Walrus (before signing broadcast)
+      // 1. Encrypt order locally
       const orderPayload: OrderPayload = {
         targetPrice: Number(price),
         amount: Number(amount),
         direction: "buy",
         userEthAddress: address,
       };
-      addLog("Encrypting order with Seal...");
-      const blobId = await encryptOrderAndUploadToWalrus(orderPayload);
-      addLog(`Order encrypted and uploaded to Walrus (blob: ${blobId.slice(0, 12)}…).`);
+      addLog("Encrypting order...");
+      const encryptedData = await encryptOrder(orderPayload);
+      addLog(`Order encrypted (${encryptedData.length} bytes).`);
 
-      // 2. Build broadcast payload (agent uses this for verification and execution)
-      const payload = {
-        intent: "STRATEGY_UPDATE",
-        price: Number(price),
-        amount: Number(amount),
-        nonce: Date.now(),
-        user: address,
-        sessionSigner: address,
-        blobId, // so agent can fetch Seal-encrypted blob from Walrus if needed
-      };
+      // 2. Send encrypted order to agent via WebSocket
+      // Agent will: upload to Walrus → create order on Sui with agent's key
+      addLog("Sending to Agent for Walrus upload & Sui order creation...");
+      const message = JSON.stringify({
+        type: "CREATE_ORDER",
+        encryptedPayload: Array.from(encryptedData), // Send as array for JSON
+      });
+      ws.current.send(message);
 
-      // 3. Sign Message (User Wallet)
-      addLog("Requesting Signature...");
-      const messageToSign = JSON.stringify(payload);
-      const signature = await signMessageAsync({ message: messageToSign });
-      addLog("Signature Generated.");
-
-      // 4. Send to Agent
-      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        const fullMessage = { ...payload, signature };
-        ws.current.send(JSON.stringify(fullMessage));
-        addLog("SUCCESS: Order encrypted (Seal), stored on Walrus, and broadcast to Agent.");
-        console.log("[Order] Sent to agent (blobId on Walrus):", blobId);
-      } else {
-        throw new Error("Agent Disconnected.");
-      }
+      addLog("Order submitted to Agent. Waiting for confirmation...");
+      console.log("[Order] Sent encrypted order to agent:", encryptedData.length, "bytes");
     } catch (error) {
       console.error("[Order] handleBuy error:", error);
       addLog(`ERROR: ${(error as Error).message}`);
@@ -185,19 +199,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Right Panel: Dynamic Stream */}
+        {/* Right Panel: Dynamic Orders (Yellow Network) */}
         <section className="cyber-border-purple bg-[#050505] p-6 flex flex-col relative overflow-hidden">
-
-          {/* Strategy Engine Component */}
-          <Strategy onLog={addLog} />
-
-          {/* Mock Graph aesthetics */}
-          <div className="absolute bottom-0 left-0 right-0 h-32 opacity-20 pointer-events-none -z-10">
-            {/* Just some CSS lines */}
-            <div className="w-full h-full" style={{
-              background: 'repeating-linear-gradient(45deg, transparent, transparent 10px, #bd00ff 10px, #bd00ff 11px)'
-            }}></div>
-          </div>
+          <DynamicOrder onLog={addLog} />
         </section>
 
       </main>

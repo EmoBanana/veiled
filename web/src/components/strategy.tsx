@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Play, Square, Activity, Wifi } from "lucide-react";
-import { getOrCreateSession, signWithSession } from "../utils/sessionKey";
+import { getOrCreateSession } from "../utils/sessionKey";
 
 interface StrategyProps {
     onLog: (msg: string) => void;
@@ -60,33 +60,12 @@ export default function Strategy({ onLog }: StrategyProps) {
             return;
         }
 
-        const runLoop = async () => {
+        const runLoop = () => {
             const currentPrice = priceRef.current;
-            // setMarketPrice(currentPrice); // Already set by WS
-
-            // Don't broadcast if price is 0
             if (currentPrice === 0) return;
-
             const targetPrice = currentPrice - offset;
-
-            // Prepare Payload
-            const payload = {
-                intent: "STRATEGY_UPDATE",
-                price: Number(targetPrice.toFixed(2)),
-                nonce: Date.now(),
-                user: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", // Mock Main User
-                sessionSigner: sessionRef.current.address
-            };
-
-            // Sign with Session Key
-            const signature = await signWithSession(sessionRef.current, payload);
-            const message = { ...payload, signature };
-
-            // Broadcast
-            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify(message));
-                onLog(`⚡ [Strat] Broadcast Target: $${targetPrice.toFixed(2)} (Signed by Session)`);
-            }
+            // Orders are no longer sent over WebSocket; use Place Order (encrypt → Walrus → Sui) instead.
+            onLog(`⚡ [Strat] Target: $${targetPrice.toFixed(2)} (display only)`);
         };
 
         const id = setInterval(runLoop, 2000); // 2 Second Loop

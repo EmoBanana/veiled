@@ -9,7 +9,7 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { SealClient } from '@mysten/seal';
 
 // Sui Testnet Package ID (deployed 2026-02-08)
-const SUI_PACKAGE_ID = '0xaed9114ecf3e09351956707583ce778bd20875d5da4f4aec3e09c941c9f7b2e7';
+const SUI_PACKAGE_ID = '0xa0418d4c65c9ff236ec7bb8f650d88ddab6ee42cf31ce41f288e493dcf3df29e';
 
 // Walrus Testnet aggregator endpoint
 const WALRUS_AGGREGATOR = 'https://aggregator.walrus-testnet.walrus.space';
@@ -105,11 +105,24 @@ function getSealClient(): SealClient {
  * Encrypt order payload with Seal (threshold encryption).
  * Returns the encrypted bytes to be uploaded to Walrus.
  */
+/** Generate a random hex string for Seal identity (id must be valid hex). */
+function randomHexId(bytes = 16): string {
+    const arr = new Uint8Array(bytes);
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        crypto.getRandomValues(arr);
+    } else {
+        for (let i = 0; i < bytes; i++) arr[i] = Math.floor(Math.random() * 256);
+    }
+    return Array.from(arr)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 export async function encryptWithSeal(payload: OrderPayload): Promise<Uint8Array> {
     console.log('[Seal] encryptWithSeal called, payload:', JSON.stringify(payload));
     const data = new TextEncoder().encode(JSON.stringify(payload));
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-    console.log('[Seal] Identity id:', id);
+    const id = randomHexId(32); // 32 bytes = 64 hex chars, valid for Seal fromHex(id)
+    console.log('[Seal] Identity id (hex):', id.slice(0, 16) + '...');
 
     const client = getSealClient();
     const { encryptedObject } = await client.encrypt({
@@ -153,6 +166,20 @@ export function decryptPayload(encrypted: Uint8Array): OrderPayload {
 
     const text = new TextDecoder().decode(decrypted);
     return JSON.parse(text);
+}
+
+/**
+ * Encrypt order only (no upload).
+ * Returns encrypted bytes that can be sent to agent for upload + Sui order creation.
+ * This keeps user's browser stateless - agent handles Walrus upload and Sui transaction.
+ * 
+ * Uses Seal threshold encryption - agent decrypts via seal_approve_order on Sui.
+ */
+export async function encryptOrder(payload: OrderPayload): Promise<Uint8Array> {
+    console.log('[Seal] Encrypting order with Seal threshold encryption...');
+    const encrypted = await encryptWithSeal(payload);
+    console.log('[Seal] ✅ Order encrypted:', encrypted.length, 'bytes');
+    return encrypted;
 }
 
 /**
@@ -215,6 +242,29 @@ export async function createEncryptedOrder(
         console.error('[Sui] createEncryptedOrder failed:', e);
         throw e;
     }
+}
+
+/**
+ * Build the Transaction for create_order(blob_id). Caller signs with Sui wallet and executes.
+ */
+export function buildCreateOrderTransaction(blobId: string): Transaction {
+    const tx = new Transaction();
+    tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::order::create_order`,
+        arguments: [
+            tx.pure.vector('u8', Array.from(new TextEncoder().encode(blobId))),
+        ],
+    });
+    return tx;
+}
+
+/**
+ * Build create_order(blob_id) transaction bytes for the Sui wallet to sign and execute.
+ */
+export async function buildCreateOrderTransactionBytes(blobId: string): Promise<Uint8Array> {
+    const client = new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl('testnet'), network: 'testnet' });
+    const tx = buildCreateOrderTransaction(blobId);
+    return tx.build({ client });
 }
 
 /**
