@@ -11,6 +11,7 @@ export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
   const [amount, setAmount] = useState("");
   const [price, setPrice] = useState("");
+  const [marketPrice, setMarketPrice] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +29,9 @@ export default function Home() {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "ORDER_CREATED") {
+        if (data.type === "PRICE_UPDATE") {
+          setMarketPrice(data.price);
+        } else if (data.type === "ORDER_CREATED") {
           addLog(`✅ Order created on Sui (tx: ${data.digest || data.txDigest || 'pending'})`);
           addLog(`📦 Walrus Blob: ${data.blobId}`);
           addLog(`🔗 https://aggregator.walrus-testnet.walrus.space/v1/blobs/${data.blobId}`);
@@ -120,10 +123,19 @@ export default function Home() {
           <Terminal className="text-[#00ff41]" />
           <h1 className="text-2xl font-bold tracking-widest text-[#00ff41] cyber-glow-text">VEILED PROTOCOL</h1>
         </div>
-        <div className="flex items-center gap-4 text-xs text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> NET: TESTNET</span>
-          {/* Reown Button */}
-          <ConnectButton />
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-gray-500 tracking-wider">MARKET PRICE</span>
+            <span className="text-xl font-mono text-white tracking-widest">
+              ${marketPrice ? marketPrice.toFixed(2) : "---"}
+            </span>
+          </div>
+          <div className="h-8 w-px bg-green-900/50"></div>
+          <div className="flex items-center gap-4 text-xs text-gray-400">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> NET: TESTNET</span>
+            {/* Reown Button */}
+            <ConnectButton />
+          </div>
         </div>
       </header>
 

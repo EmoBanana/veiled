@@ -28,14 +28,14 @@ body {
 }
 
 .cyber-glow-text {
-  text-shadow: 0 0 5px var(--neon-green);
+  text-shadow: 0 0 0;
 }
 
 .scanline {
   width: 100%;
   height: 100px;
   z-index: 10;
-  background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 65, 0.1) 50%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0) 0%, rgba(0, 255, 65, 0.1) 50%, rgba(0, 0, 0, 0) 100%);
   opacity: 0.1;
   position: absolute;
   bottom: 100%;
@@ -47,6 +47,7 @@ body {
   0% {
     bottom: 100%;
   }
+
   100% {
     bottom: -100px;
   }
@@ -60,41 +61,53 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(18, 16, 16, 0.05); /* Slight noise */
+  background: rgba(18, 16, 16, 0.05);
+  /* Slight noise */
 }
 
 @keyframes flicker {
-  0% { opacity: 0.9; }
-  50% { opacity: 1.0; }
-  100% { opacity: 0.95; }
+  0% {
+    opacity: 0.9;
+  }
+
+  50% {
+    opacity: 1.0;
+  }
+
+  100% {
+    opacity: 0.95;
+  }
 }
 
 input {
-    background: transparent;
-    border: 1px solid #333;
-    color: var(--neon-green);
-    font-family: var(--terminal-font);
-    padding: 0.5rem;
-    outline: none;
+  background: transparent;
+  border: 1px solid #333;
+  color: var(--neon-green);
+  font-family: var(--terminal-font);
+  padding: 0.5rem;
+  outline: none;
 }
+
 input:focus {
-    border-color: var(--neon-green);
-    box-shadow: 0 0 5px var(--neon-green);
+  border-color: var(--neon-green);
+  box-shadow: 0 0 5px var(--neon-green);
 }
 
 button.cyber-btn {
-    background: var(--neon-green);
-    color: black;
-    font-weight: bold;
-    text-transform: uppercase;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
+  background: var(--neon-green);
+  color: black;
+  font-weight: bold;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
 }
+
 button.cyber-btn:hover {
-    box-shadow: 0 0 15px var(--neon-green);
-    transform: scale(1.02);
+  box-shadow: 0 0 15px var(--neon-green);
+  transform: scale(1.02);
 }
+
 button.cyber-btn:active {
-    transform: scale(0.98);
+  transform: scale(0.98);
 }
