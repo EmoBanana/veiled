@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Terminal, Lock, Activity, UploadCloud, ShieldCheck } from "lucide-react";
-import { uploadToWalrus } from "./walrusService";
+import { Terminal, Lock, Activity, UploadCloud, ShieldCheck, Wallet } from "lucide-react";
 import Strategy from "../components/strategy";
+import { useAccount, useSignMessage } from "wagmi";
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { encryptOrderAndUploadToWalrus, type OrderPayload } from "../utils/sui-order";
 
 export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
@@ -11,6 +13,20 @@ export default function Home() {
   const [price, setPrice] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Wagmi Hooks
+  const { address, isConnected } = useAccount();
+  const { signMessageAsync } = useSignMessage();
+
+  // WebSocket for Orders
+  const ws = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const socket = new WebSocket("ws://localhost:8080");
+    ws.current = socket;
+    socket.onopen = () => addLog("System Connected to Agent Net.");
+    return () => { socket.close(); };
+  }, []);
 
   const addLog = (msg: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
@@ -24,27 +40,55 @@ export default function Home() {
 
   const handleBuy = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || !price) return;
+    if (!amount || !price || !isConnected || !address) {
+      addLog("ERROR: Connect Wallet & Enter Valid Details.");
+      return;
+    }
 
     setIsProcessing(true);
-    addLog("Initiating Limit Order...");
+    addLog("Initiating Secure Limit Order...");
+    console.log("[Order] Place Order: Seal encrypt + Walrus upload + broadcast to agent.");
 
     try {
-      const orderData = JSON.stringify({
-        type: "BUY_ETH",
-        amount,
-        price,
+      // 1. Encrypt order with Seal and upload to Walrus (before signing broadcast)
+      const orderPayload: OrderPayload = {
+        targetPrice: Number(price),
+        amount: Number(amount),
+        direction: "buy",
+        userEthAddress: address,
+      };
+      addLog("Encrypting order with Seal...");
+      const blobId = await encryptOrderAndUploadToWalrus(orderPayload);
+      addLog(`Order encrypted and uploaded to Walrus (blob: ${blobId.slice(0, 12)}…).`);
+
+      // 2. Build broadcast payload (agent uses this for verification and execution)
+      const payload = {
+        intent: "STRATEGY_UPDATE",
+        price: Number(price),
+        amount: Number(amount),
         nonce: Date.now(),
-        timestamp: new Date().toISOString()
-      });
+        user: address,
+        sessionSigner: address,
+        blobId, // so agent can fetch Seal-encrypted blob from Walrus if needed
+      };
 
-      // Use Walrus Service
-      const blobId = await uploadToWalrus(orderData, addLog);
+      // 3. Sign Message (User Wallet)
+      addLog("Requesting Signature...");
+      const messageToSign = JSON.stringify(payload);
+      const signature = await signMessageAsync({ message: messageToSign });
+      addLog("Signature Generated.");
 
-      addLog("SUCCESS: Order stored decentralized.");
-      addLog(`Reference Blob ID: ${blobId}`);
-
+      // 4. Send to Agent
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        const fullMessage = { ...payload, signature };
+        ws.current.send(JSON.stringify(fullMessage));
+        addLog("SUCCESS: Order encrypted (Seal), stored on Walrus, and broadcast to Agent.");
+        console.log("[Order] Sent to agent (blobId on Walrus):", blobId);
+      } else {
+        throw new Error("Agent Disconnected.");
+      }
     } catch (error) {
+      console.error("[Order] handleBuy error:", error);
       addLog(`ERROR: ${(error as Error).message}`);
     } finally {
       setIsProcessing(false);
@@ -64,7 +108,8 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4 text-xs text-gray-400">
           <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> NET: TESTNET</span>
-          <span>V: 0.1.0-ALPHA</span>
+          {/* Reown Button */}
+          <ConnectButton />
         </div>
       </header>
 
@@ -75,12 +120,12 @@ export default function Home() {
         <section className="cyber-border bg-[#050505] p-6 flex flex-col gap-4">
           <div className="flex items-center gap-2 mb-2 border-b border-gray-800 pb-2">
             <Lock size={18} className="text-[#00ff41]" />
-            <h2 className="text-lg font-bold text-[#00ff41]">STATIC ORDERS</h2>
+            <h2 className="text-lg font-bold text-[#00ff41]">SECURE ORDER ENTRY</h2>
           </div>
 
           <p className="text-xs text-gray-400 mb-4">
-            Orders are encrypted client-side and stored on Walrus (Sui).
-            Ghost Agents execute them when conditions are met.
+            Orders are signed by your wallet and transmitted directly to the Agent execution layer.
+            Wait for the 'Limit' trigger.
           </p>
 
           <form onSubmit={handleBuy} className="flex flex-col gap-4">
@@ -100,7 +145,7 @@ export default function Home() {
                 placeholder="1000"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="bg-black/50"
+                className="bg-black/50 text-white p-2 border border-[#333] focus:border-[#00ff41] outline-none"
               />
             </div>
 
@@ -111,18 +156,20 @@ export default function Home() {
                 placeholder="2400.00"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="bg-black/50"
+                className="bg-black/50 text-white p-2 border border-[#333] focus:border-[#00ff41] outline-none"
               />
             </div>
 
             <button
-              disabled={isProcessing}
+              disabled={isProcessing || !isConnected}
               className="cyber-btn mt-4 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isProcessing ? (
                 <>UPLOADING <UploadCloud className="animate-bounce" size={16} /></>
+              ) : !isConnected ? (
+                <>CONNECT WALLET <Wallet size={16} /></>
               ) : (
-                <>ENCRYPT & SIGN <ShieldCheck size={16} /></>
+                <>SIGN & PLACE ORDER <ShieldCheck size={16} /></>
               )}
             </button>
           </form>
@@ -132,10 +179,7 @@ export default function Home() {
             <div className="text-xs text-gray-500 mb-2">ACTIVE GHOST AGENTS</div>
             <div className="flex gap-2">
               <div className="bg-green-900/20 text-green-400 px-2 py-1 text-xs border border-green-900 rounded">
-                AGENT-01 (IDLE)
-              </div>
-              <div className="bg-green-900/20 text-green-400 px-2 py-1 text-xs border border-green-900 rounded">
-                AGENT-02 (LISTENING)
+                AGENT-01 (LISTENING)
               </div>
             </div>
           </div>

@@ -11,13 +11,14 @@ interface StrategyProps {
 export default function Strategy({ onLog }: StrategyProps) {
     const [isRunning, setIsRunning] = useState(false);
     const [offset, setOffset] = useState(50);
-    const [marketPrice, setMarketPrice] = useState(0);
+    const [marketPrice, setMarketPrice] = useState(0); // For UI
     const [sessionStatus, setSessionStatus] = useState("No Session");
 
-    // Refs for Loop
+    // Refs for Loop & State Access
     const ws = useRef<WebSocket | null>(null);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
     const sessionRef = useRef<any>(null);
+    const priceRef = useRef(0); // For Loop Access
 
     // 1. Initialize Session & WS
     useEffect(() => {
@@ -30,25 +31,29 @@ export default function Strategy({ onLog }: StrategyProps) {
         const socket = new WebSocket("ws://localhost:8080");
         ws.current = socket;
 
+        socket.onopen = () => {
+            console.log("[Strategy] WS Connected");
+        };
+
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === "PRICE_UPDATE") {
+                    setMarketPrice(data.price);
+                    priceRef.current = data.price;
+                }
+            } catch (e) {
+                console.error("WS Parse Error", e);
+            }
+        };
+
         return () => {
             socket.close();
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
     }, []);
 
-    // 2. Fetch Market Price (Mock/Real)
-    const fetchPrice = async () => {
-        try {
-            // Use CoinGecko or fallback mock
-            const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd");
-            const data = await res.json();
-            return data.ethereum?.usd || 2400; // Fallback
-        } catch (e) {
-            return 2400 + Math.random() * 10; // Mock variance
-        }
-    };
-
-    // 3. The Strategy Loop
+    // 2. The Strategy Loop
     useEffect(() => {
         if (!isRunning) {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -56,8 +61,11 @@ export default function Strategy({ onLog }: StrategyProps) {
         }
 
         const runLoop = async () => {
-            const currentPrice = await fetchPrice();
-            setMarketPrice(currentPrice);
+            const currentPrice = priceRef.current;
+            // setMarketPrice(currentPrice); // Already set by WS
+
+            // Don't broadcast if price is 0
+            if (currentPrice === 0) return;
 
             const targetPrice = currentPrice - offset;
 
